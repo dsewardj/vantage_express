@@ -1,0 +1,1 @@
+tdload -h 192.168.0.195 -u dbc -p dbc --TargetWorkingDatabase AdventureWorksDW2019 -d TAB -f C:\flat_files\DimAccount.csv -t AdventureWorksDW2019.DimAccount;
