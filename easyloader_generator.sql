@@ -11,7 +11,7 @@ select
 -- Filepath
 '-f C:\flat_files\' || tbl.TableName || '.csv ' ||
 -- Table name
-'-t AdventureWorksDW2019.' || tbl.TableName as easyloader_script
+'-t AdventureWorksDW2019.' || tbl.TableName || ';' as easyloader_script
 from dbc.tablesv as tbl
 where tbl.DatabaseName = 'AdventureWorksDW2019'
  and tbl.TableKind = 'T'
