@@ -4,7 +4,7 @@ select
 '-h 192.168.0.195 ' ||
 -- User credentials
 '-u dbc -p dbc ' ||
--- Working Database
+-- Working database
 '--TargetWorkingDatabase AdventureWorksDW2019 ' ||
 -- Column delimiter and character set
 '-d TAB UTF8' ||
