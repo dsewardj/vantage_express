@@ -6,8 +6,8 @@ select
 '-u dbc -p dbc ' ||
 -- Working Database
 '--TargetWorkingDatabase AdventureWorksDW2019 ' ||
--- Column delimiter
-'-d TAB ' ||
+-- Column delimiter and character set
+'-d TAB UTF8' ||
 -- Filepath
 '-f C:\flat_files\' || tbl.TableName || '.csv ' ||
 -- Table name
