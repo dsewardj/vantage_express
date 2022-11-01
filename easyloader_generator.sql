@@ -7,7 +7,7 @@ select
 -- Working database
 '--TargetWorkingDatabase AdventureWorksDW2019 ' ||
 -- Column delimiter and character set
-'-d TAB UTF8' ||
+'-d TAB -c UTF8 ' ||
 -- Filepath
 '-f C:\flat_files\' || tbl.TableName || '.csv ' ||
 -- Table name
