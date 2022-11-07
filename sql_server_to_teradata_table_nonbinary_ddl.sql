@@ -1,0 +1,167 @@
+/*************************************************************************************************************************************
+	Title:		SQL Server to Teradata Table Definitions (WITHOUT BINARY DATA TYPES)
+	Author:		Donny Seward Jr
+	Email:		ddsewardj@gmail.com
+	Desc:
+
+	Convert SQL Server table definitions to Teradata table definitions.
+	This script will convert all tables within the specified 'USE' database.
+
+*************************************************************************************************************************************/
+
+USE AdventureWorksDW2019
+
+-- Specify the Teradata target database name.
+DECLARE @DatabaseName as varchar(255);
+SET @DatabaseName = 'AdventureWorksDW2019';
+
+SELECT
+	  TABLE_NAME
+	, COLUMN_NAME
+	, SECTION
+	, ORDINAL_POSITION
+	, TD_CREATE_TABLE_STMT + TD_DATA_TYPE + TD_NULLABLE + DDL_END_LINE AS DDL_STATEMENT
+FROM
+	(
+	-- Convert Data Type, Case-Specific, and Nullable properties of all columns in tables.
+	SELECT
+		1.0 AS SECTION
+		, COL.TABLE_NAME
+		, COL.ORDINAL_POSITION
+		, MAX_ORD_POS.ORDINAL_POSITION_MAX
+		, COLUMN_NAME
+		, DATA_TYPE
+		, CHARACTER_MAXIMUM_LENGTH
+		, CHARACTER_OCTET_LENGTH
+		, COLLATION_NAME
+		, IS_NULLABLE
+		, 
+		  CASE
+			-- Exact numerics
+			WHEN DATA_TYPE = 'bigint'		THEN '"' + COLUMN_NAME + '"' + ' BIGINT'
+			WHEN DATA_TYPE = 'bit'			THEN '"' + COLUMN_NAME + '"' + ' BYTEINT'
+			WHEN DATA_TYPE = 'decimal'		THEN '"' + COLUMN_NAME + '"' + ' DECIMAL(' + CAST(NUMERIC_PRECISION AS VARCHAR(255)) + ',' + CAST(NUMERIC_SCALE AS VARCHAR(255)) + ')'
+			WHEN DATA_TYPE = 'int'			THEN '"' + COLUMN_NAME + '"' + ' INTEGER'
+			WHEN DATA_TYPE = 'money'		THEN '"' + COLUMN_NAME + '"' + ' DECIMAL(' + CAST(NUMERIC_PRECISION AS VARCHAR(255)) + ',' + CAST(NUMERIC_SCALE AS VARCHAR(255)) + ')'
+			WHEN DATA_TYPE = 'numeric'		THEN '"' + COLUMN_NAME + '"' + ' NUMBER'
+			WHEN DATA_TYPE = 'smallint'		THEN '"' + COLUMN_NAME + '"' + ' SMALLINT'
+			WHEN DATA_TYPE = 'smallmoney'	THEN '"' + COLUMN_NAME + '"' + ' DECIMAL(' + CAST(NUMERIC_PRECISION AS VARCHAR(255)) + ',' + CAST(NUMERIC_SCALE AS VARCHAR(255)) + ')'
+			WHEN DATA_TYPE = 'tinyint'		THEN '"' + COLUMN_NAME + '"' + ' INTEGER'
+
+			-- Approximate numerics
+			WHEN DATA_TYPE = 'float'		THEN '"' + COLUMN_NAME + '"' + ' FLOAT'
+			WHEN DATA_TYPE = 'real'			THEN '"' + COLUMN_NAME + '"' + ' FLOAT'
+
+			-- Date and time
+			WHEN DATA_TYPE = 'date'			THEN '"' + COLUMN_NAME + '"' + ' DATE FORMAT ''YYYY/MM/DD'''
+			WHEN DATA_TYPE = 'datetime'		THEN '"' + COLUMN_NAME + '"' + ' TIMESTAMP(0)'
+			WHEN DATA_TYPE = 'datetime2'	THEN '"' + COLUMN_NAME + '"' + ' TIMESTAMP(0)'
+			WHEN DATA_TYPE = 'time'			THEN '"' + COLUMN_NAME + '"' + ' TIME(0)'
+
+			-- Character strings
+			WHEN DATA_TYPE = 'char'			THEN '"' + COLUMN_NAME + '"' + ' CHAR(' + CASE WHEN CHARACTER_MAXIMUM_LENGTH = -1 THEN 'MAX' ELSE CAST(CHARACTER_MAXIMUM_LENGTH AS VARCHAR(255)) END + ') CHARACTER SET UNICODE'
+			WHEN DATA_TYPE = 'varchar'		THEN '"' + COLUMN_NAME + '"' + ' VARCHAR(' + CAST(CHARACTER_MAXIMUM_LENGTH AS VARCHAR(255)) + ') CHARACTER SET UNICODE'
+			WHEN DATA_TYPE = 'text'			THEN '"' + COLUMN_NAME + '"' + ' CLOB(10485760) CHARACTER SET UNICODE '
+
+			-- Unicode character strings
+			WHEN DATA_TYPE = 'nchar'		THEN '"' + COLUMN_NAME + '"' + ' CHAR(' + CAST(CHARACTER_OCTET_LENGTH AS VARCHAR(255)) + ') CHARACTER SET UNICODE'
+			WHEN DATA_TYPE = 'nvarchar'		THEN '"' + COLUMN_NAME + '"' + ' VARCHAR(' + CASE WHEN CHARACTER_OCTET_LENGTH = -1 THEN '32000)' ELSE CAST(CHARACTER_OCTET_LENGTH AS VARCHAR(255)) + ')' END + ' CHARACTER SET UNICODE'
+			WHEN DATA_TYPE = 'ntext'		THEN '"' + COLUMN_NAME + '"' + ' CLOB(10485760) CHARACTER SET UNICODE '
+
+			-- Binary strings
+			WHEN DATA_TYPE = 'binary'		THEN '"' + COLUMN_NAME + '"' + ' BYTE'
+			WHEN DATA_TYPE = 'varbinary'	THEN '"' + COLUMN_NAME + '"' + ' BLOB(' + CASE WHEN CHARACTER_MAXIMUM_LENGTH = -1 THEN '64000)' ELSE CAST(CHARACTER_MAXIMUM_LENGTH AS VARCHAR(255)) + ')' END
+
+			WHEN DATA_TYPE = 'xml'			THEN '"' + COLUMN_NAME + '"' + ' XML'	
+
+		END AS TD_DATA_TYPE
+
+		, CASE WHEN COLLATION_NAME LIKE '%CS_AS%' THEN ' CASESPECIFIC' ELSE '' END AS TD_CASESPECIFIC
+		, CASE WHEN IS_NULLABLE = 'NO' THEN ' NOT NULL' ELSE '' END AS TD_NULLABLE
+		, CASE WHEN COL.ORDINAL_POSITION = 1 THEN 'CREATE MULTISET TABLE ' + @DatabaseName + '.' + COL.TABLE_NAME + ', NO FALLBACK, NO BEFORE JOURNAL, NO AFTER JOURNAL, CHECKSUM = DEFAULT, DEFAULT MERGEBLOCKRATIO(' + CHAR(13)+CHAR(10) ELSE '' END AS TD_CREATE_TABLE_STMT
+		, CASE WHEN PK.TABLE_NAME IS NULL AND COL.ORDINAL_POSITION = MAX_ORD_POS.ORDINAL_POSITION_MAX THEN ');' + CHAR(13)+CHAR(10) + CHAR(13)+CHAR(10) ELSE ',' END AS DDL_END_LINE
+
+	FROM INFORMATION_SCHEMA.COLUMNS AS COL
+
+	LEFT JOIN
+		-- find last column in table
+		(
+		SELECT
+			  TABLE_NAME
+			, MAX(ORDINAL_POSITION) AS ORDINAL_POSITION_MAX
+		FROM INFORMATION_SCHEMA.COLUMNS
+		GROUP BY TABLE_NAME
+		) AS MAX_ORD_POS
+		ON MAX_ORD_POS.TABLE_NAME = COL.TABLE_NAME
+
+	LEFT JOIN
+		-- Determine whether the table contains primary keys.  This helps with closing out the column list.
+		(
+		SELECT DISTINCT KU.TABLE_NAME
+		FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS TC
+		INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS KU
+			ON TC.CONSTRAINT_TYPE = 'PRIMARY KEY' 
+			AND TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME
+		) AS PK
+		ON PK.TABLE_NAME = COL.TABLE_NAME
+
+	) AS Q1
+
+	-- we need to remove system tables
+	LEFT JOIN sys.objects AS obj
+	ON obj.name = Q1.TABLE_NAME
+
+	WHERE obj.type = 'U' AND Q1.TABLE_NAME <> 'sysdiagrams' AND Q1.DATA_TYPE NOT IN ('binary','varbinary','xml')
+
+UNION ALL
+
+	-- return list of primary keys
+	SELECT
+		  Q1.TABLE_NAME
+		, Q1.COLUMN_NAME
+		, 2.0 AS SECTION
+		, Q1.ORDINAL_POSITION
+		, CASE
+			WHEN Q1.ORDINAL_POSITION = 1 AND Q2.ORDINAL_POSITION_MAX = 1 THEN 'PRIMARY KEY (' + '"' + COLUMN_NAME + '"));' + CHAR(13)+CHAR(10) + CHAR(13)+CHAR(10)
+			WHEN Q1.ORDINAL_POSITION = 1 AND Q2.ORDINAL_POSITION_MAX > 1 THEN 'PRIMARY KEY (' + '"' + COLUMN_NAME + '",'
+			WHEN Q1.ORDINAL_POSITION = Q2.ORDINAL_POSITION_MAX THEN '"' + COLUMN_NAME + '"));' + CHAR(13)+CHAR(10) + CHAR(13)+CHAR(10)
+			ELSE '"' + COLUMN_NAME + '",'
+		  END AS DDL_STATEMENT
+	FROM
+		(
+		SELECT
+			  KU.TABLE_NAME
+			, COLUMN_NAME
+			, ORDINAL_POSITION
+		FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS TC
+		INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS KU
+		  ON TC.CONSTRAINT_TYPE = 'PRIMARY KEY' 
+		 AND TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME
+		) AS Q1
+	LEFT JOIN
+		(
+		SELECT
+			  MAX_POS.TABLE_NAME
+			, MAX(MAX_POS.ORDINAL_POSITION) AS ORDINAL_POSITION_MAX
+		FROM
+			(
+			SELECT
+				  KU.TABLE_NAME
+				, COLUMN_NAME
+				, ORDINAL_POSITION
+			FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS TC
+			INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS KU
+			  ON TC.CONSTRAINT_TYPE = 'PRIMARY KEY' 
+			 AND TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME
+			) AS MAX_POS
+		GROUP BY MAX_POS.TABLE_NAME
+
+		) AS Q2
+	   ON Q2.TABLE_NAME = Q1.TABLE_NAME
+
+	   LEFT JOIN sys.objects AS obj
+	   ON obj.name = Q2.TABLE_NAME
+
+	   WHERE obj.type = 'U' AND Q1.TABLE_NAME <> 'sysdiagrams' AND Q2.TABLE_NAME <> 'sysdiagrams'
+
+	   ORDER BY 1,3,4
