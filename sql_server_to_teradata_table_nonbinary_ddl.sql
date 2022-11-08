@@ -111,7 +111,7 @@ FROM
 	LEFT JOIN sys.objects AS obj
 	ON obj.name = Q1.TABLE_NAME
 
-	WHERE obj.type = 'U' AND Q1.TABLE_NAME <> 'sysdiagrams' AND Q1.DATA_TYPE NOT IN ('binary','varbinary','xml')
+	WHERE obj.type = 'U' AND Q1.TABLE_NAME <> 'sysdiagrams' AND Q1.CHARACTER_MAXIMUM_LENGTH <> -1
 
 UNION ALL
 
